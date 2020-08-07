@@ -34,38 +34,40 @@ namespace PayQueue.Publishing
             _sourceService = sourceService;
         }
 
-        public async Task Command<S, T>(T message) where S : IServiceDefinition, new() =>
+        public async Task<PublishResult> Command<S, T>(T message) where S : IServiceDefinition, new() =>
             await Command<S, T>(message, (parameters) => 
             {
                 parameters.ConversationId = null;
             });
         
 
-        public async Task Command<S, T>(T message, Action<ICallParameters> parameters) where S : IServiceDefinition, new()
+        public async Task<PublishResult> Command<S, T>(T message, Action<ICallParameters> parameters) where S : IServiceDefinition, new()
         {
             var route = _commandCatalog.GetRoute<S, T>();
             var datagram = NewDatagram(message, parameters);
             var binMessage = Serialize(datagram);
             _deps.Logger.LogDebug($"Publish command {typeof(S).Name}:{typeof(T).Name} to {route}. ID {datagram.RequestId}");
-            await _publisher.Command(route, typeof(T).FullName, binMessage);
-            _deps.Logger.LogDebug($"Published command {typeof(S).Name}:{typeof(T).Name} to {route} successfully. ID {datagram.RequestId}");
+            var res = await _publisher.Command(route, typeof(T).FullName, binMessage);
+            _deps.Logger.LogDebug($"Published command {typeof(S).Name}:{typeof(T).Name} to {route} with result: {res.PublishStatus}. ID {datagram.RequestId}");
+            return res;
         }
 
-        public async Task Publish<T>(T message) =>
+        public async Task<PublishResult> Publish<T>(T message) =>
             await Publish<T>(message, (ICallParameters parameters) => 
             {
                 parameters.ConversationId = null;
             });
         
 
-        public async Task Publish<T>(T message, Action<ICallParameters> parameters)
+        public async Task<PublishResult> Publish<T>(T message, Action<ICallParameters> parameters)
         {
             var route = _eventCatalog.GetRoute(message);
             var datagram = NewDatagram(message, parameters);
             var binMessage = Serialize(datagram);
             _deps.Logger.LogDebug($"Publish event {typeof(T).Name} to {route}. ID: {datagram.RequestId}");
-            await _publisher.PublishEvent(route, typeof(T).FullName, binMessage);
-            _deps.Logger.LogDebug($"Published event {typeof(T).Name} to {route} successfully. ID: {datagram.RequestId}");
+            var res = await _publisher.PublishEvent(route, typeof(T).FullName, binMessage);
+            _deps.Logger.LogDebug($"Published event {typeof(T).Name} to {route} with result: {res.PublishStatus}. ID: {datagram.RequestId}");
+            return res;
         }
         
 

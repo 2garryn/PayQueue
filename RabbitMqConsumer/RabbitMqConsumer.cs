@@ -14,9 +14,10 @@ namespace PayQueue.RabbitMqConsumer
     internal class RabbitMqConsumer : IQueueConsumer
     {
         private readonly IConnection _conn;
-        private readonly Channel<PublishMessage> _poolChannel;
-        private Task _poolTask;
+       // private readonly Channel<PublishMessage> _poolChannel;
+       // private Task _poolTask;
         private RabbitConfiguration _conf;
+        private PooledExchangePublisher _poolPublisher;
 
         public RabbitMqConsumer(RabbitConfiguration conf)
         {
@@ -30,14 +31,13 @@ namespace PayQueue.RabbitMqConsumer
                 DispatchConsumersAsync = true
             };
             _conn = factory.CreateConnection();
-            var options = new BoundedChannelOptions(_conf.PublishPoolSize)
-            {
-                FullMode = BoundedChannelFullMode.Wait
-            };
-            _poolChannel = Channel.CreateBounded<PublishMessage>(options);
-            _poolTask = Task.Run(async () => await new ChannelPool(_conn, _conf.PublishPoolSize, _poolChannel.Reader).Run());
-
+            _poolPublisher = new PooledExchangePublisher(_conn, 15);
         }
+
+        public async Task Start() => await _poolPublisher.Start();
+        
+
+
         public void RegisterCommandConsumer(string queue, IConsumeExecutor executor)
         {
             var channel = _conn.CreateModel();
@@ -62,15 +62,7 @@ namespace PayQueue.RabbitMqConsumer
             channel.BasicConsume(queue, false, consumer);
         }
 
-        public IExchangePublisher GetExchangePublisher()
-        {
-            return new PooledExchangePublisher(_poolChannel.Writer);
-        }
-
-        public async Task WaitPoolFinished()
-        {
-            await _poolTask;
-        }
+        public IExchangePublisher GetExchangePublisher() => _poolPublisher;
 
 
         private AsyncEventHandler<BasicDeliverEventArgs> GetReceived(IConsumeExecutor executor, string queue, IModel channel)
@@ -89,6 +81,7 @@ namespace PayQueue.RabbitMqConsumer
 
                     await executor.Execute(GetExchangePublisher(), messageType, ea.Body.ToArray(), metadata);
                     channel.BasicAck(ea.DeliveryTag, false);
+                    await Task.Yield();
                 }
                 catch (Exception e)
                 {
@@ -105,10 +98,10 @@ namespace PayQueue.RabbitMqConsumer
                         Exchange = ea.Exchange
                     };
                     var data = JsonSerializer.Serialize(errMsg);
-                    await new PooledExchangePublisher(_poolChannel.Writer)
-                        .PublishError(_conf.ErrorExchange, _conf.ErrorQueue, Encoding.UTF8.GetBytes(data));
+                    await _poolPublisher.PublishError(_conf.ErrorExchange, _conf.ErrorQueue, Encoding.UTF8.GetBytes(data));
                         
                 }
+                
             };
         }
         public async Task Stop() 

@@ -4,21 +4,21 @@ using RabbitMQ.Client;
 using System.Threading.Channels;
 using System.Collections.Generic;
 using PayQueue.QueueInterfaces;
-
+using PayQueue.Impl;
 namespace PayQueue.RabbitMqConsumer
 {
 
     public class PooledExchangePublisher : IExchangePublisher
     {
-        private readonly ChannelWriter<PublishMessage> _channel;
-        public PooledExchangePublisher(ChannelWriter<PublishMessage> channel)
+        private ObjectPoolPublisher _poolPublisher;
+        public PooledExchangePublisher(IConnection connection, int size)
         {
-            _channel = channel;
+            _poolPublisher = new ObjectPoolPublisher(connection, 15);
         }
+        public async Task Start() => await _poolPublisher.Start();
 
-        public async Task PublishEvent(string exchange, string messageType, byte[] data)
-        {          
-            await _channel.WriteAsync(new PublishMessage
+        public async Task<PublishResult> PublishEvent(string exchange, string messageType, byte[] data) =>
+            await _poolPublisher.Publish(new PublishMessage
             {
                 Properties = (props) => 
                 {
@@ -29,13 +29,12 @@ namespace PayQueue.RabbitMqConsumer
                 Body = data,
                 ExchangeName = exchange,
                 ExchangeType = ExchangeType.Fanout,
-                QueueName = exchange,
+                CreateQueue = false,
                 RoutingKey = ""
             });
-        }
-        public async Task Command(string exchange, string messageType, byte[] data)
-        {
-            await _channel.WriteAsync(new PublishMessage
+        
+        public async Task<PublishResult> Command(string exchange, string messageType, byte[] data) =>
+            await _poolPublisher.Publish(new PublishMessage
             {
                 Properties = (props) => 
                 {
@@ -47,13 +46,13 @@ namespace PayQueue.RabbitMqConsumer
                 ExchangeName = exchange,
                 ExchangeType = ExchangeType.Direct,
                 QueueName = exchange,
+                CreateQueue = true,
                 RoutingKey = ""
             });
-        }
+        
 
-        public async Task PublishError(string exchange, string queue, byte[] data)
-        {
-            await _channel.WriteAsync(new PublishMessage
+        public async Task PublishError(string exchange, string queue, byte[] data) =>
+            await _poolPublisher.Publish(new PublishMessage
             {
                 Properties = (props) => 
                 {
@@ -62,10 +61,11 @@ namespace PayQueue.RabbitMqConsumer
                 Body = data,
                 ExchangeName = exchange,
                 ExchangeType = ExchangeType.Direct,
-                QueueName = exchange,
+                QueueName = queue,
+                CreateQueue = true,
                 RoutingKey = ""
             });
-        }
+        
 
     }
 

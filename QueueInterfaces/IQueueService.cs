@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using PayQueue.Impl;
 
 namespace PayQueue.QueueInterfaces
 {
@@ -14,8 +15,8 @@ namespace PayQueue.QueueInterfaces
 
     internal interface IExchangePublisher
     {
-        Task PublishEvent(string endpoint, string messageType, byte[] data);
-        Task Command(string endpoint, string messageType, byte[] data);
+        Task<PublishResult> PublishEvent(string endpoint, string messageType, byte[] data);
+        Task<PublishResult> Command(string endpoint, string messageType, byte[] data);
     }
 
     internal interface IConsumeExecutor
