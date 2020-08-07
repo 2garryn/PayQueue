@@ -48,6 +48,7 @@ namespace PayQueue.RabbitMqConsumer
                     tsk.Properties(props);
                     
                     model.BasicPublish(tsk.ExchangeName, tsk.RoutingKey, true, props, tsk.Body);
+                    model.WaitForConfirms();
                 }
             }
         }
